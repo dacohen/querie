@@ -5,13 +5,16 @@ use ratatui::{
     crossterm::event::{self, Event},
     layout::{Constraint, Layout, Position},
     style::{Style, Stylize},
-    widgets::{Block, BorderType, Paragraph},
+    widgets::{Block, BorderType, Paragraph, Row, Table},
     Frame,
 };
+
+use crate::db;
 
 pub struct State {
     active_area: Area,
     query: QueryState,
+    results: ResultsState,
     should_quit: bool,
 }
 
@@ -21,31 +24,55 @@ struct QueryState {
     execute_queue: Vec<String>,
 }
 
+struct ResultsState {
+    result_sets: Vec<Vec<Vec<db::DBResult>>>,
+    selected_result: usize,
+}
+
 impl QueryState {
+    fn byte_index(&self) -> usize {
+        self.text
+            .char_indices()
+            .map(|(i, _)| i)
+            .nth(self.cursor_pos as usize)
+            .unwrap_or(self.text.len())
+    }
+
     fn clamp_cursor(&self, new_cursor_pos: u16) -> u16 {
         return new_cursor_pos.clamp(0, self.text.chars().count() as u16);
     }
 }
 
-impl State {
-    pub fn new() -> Self {
-        return State {
-            active_area: Area::None,
+impl Default for State {
+    fn default() -> Self {
+        State {
+            active_area: Area::Query,
             query: QueryState {
                 text: String::new(),
                 cursor_pos: 0,
                 execute_queue: Vec::new(),
             },
+            results: ResultsState {
+                result_sets: Vec::new(),
+                selected_result: 0,
+            },
             should_quit: false,
-        };
+        }
     }
+}
 
+impl State {
     pub fn should_quit(&self) -> bool {
         self.should_quit
     }
 
     pub fn pop_query(&mut self) -> Option<String> {
         self.query.execute_queue.pop()
+    }
+
+    pub fn add_results(&mut self, result: Vec<Vec<db::DBResult>>) {
+        self.results.result_sets.push(result);
+        self.results.selected_result = self.results.result_sets.len() - 1;
     }
 
     pub fn handle_event(&mut self) {
@@ -78,26 +105,60 @@ impl State {
         frame.render_widget(
             Block::bordered().title(match self.active_area {
                 Area::None => "- (q to quit)",
-                Area::Result => "Result",
+                Area::Results => "Result",
                 Area::Variables => "Variables",
                 Area::Query => "Query (ENTER to run)",
             }),
             status_area,
         );
 
-        frame.render_widget(
-            Block::bordered()
-                .title("Result Area")
-                .border_type(match self.active_area {
-                    Area::Result => BorderType::Thick,
-                    _ => BorderType::Plain,
-                })
-                .border_style(match self.active_area {
-                    Area::Result => active_style,
-                    _ => inactive_style,
-                }),
-            result_area,
-        );
+        let results_block = Block::bordered()
+            .title("Results")
+            .border_type(match self.active_area {
+                Area::Results => BorderType::Thick,
+                _ => BorderType::Plain,
+            })
+            .border_style(match self.active_area {
+                Area::Results => active_style,
+                _ => inactive_style,
+            });
+        frame.render_widget(&results_block, result_area);
+
+        let results_block_inner_area = results_block.inner(result_area);
+        if self.results.result_sets.len() > 0 {
+            let result_set = self
+                .results
+                .result_sets
+                .get(self.results.selected_result)
+                .unwrap();
+            let mut rows_vec: Vec<Row> = Vec::new();
+            let mut widths: Vec<Constraint> = Vec::new();
+            let mut column_names: Vec<String> = Vec::new();
+            let mut first_row = true;
+
+            for row in result_set {
+                let mut row_vec: Vec<String> = Vec::new();
+                for col in row {
+                    if first_row {
+                        column_names.push(col.column_name.clone());
+                        widths.push(Constraint::Min(col.column_name.len() as u16));
+                    }
+                    row_vec.push(col.value.clone());
+                }
+                first_row = false;
+                rows_vec.push(Row::new(row_vec));
+            }
+
+            let table = Table::new(rows_vec, widths)
+                .column_spacing(1)
+                .header(Row::new(column_names).bottom_margin(1))
+                .block(
+                    Block::bordered().title(format!("Result {}", self.results.selected_result + 1)),
+                );
+
+            frame.render_widget(table, results_block_inner_area);
+        }
+
         frame.render_widget(
             Block::bordered()
                 .title("Variables")

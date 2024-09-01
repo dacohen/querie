@@ -10,12 +10,14 @@ pub fn handle_event(state: &mut State, key_event: &KeyEvent) {
         KeyCode::Tab => state.active_area = Area::None,
         KeyCode::BackTab => state.active_area = Area::Variables,
         KeyCode::Char(c) => {
-            state.query.text += &c.to_string();
+            state.query.text.insert(state.query.byte_index(), c);
             move_cursor_right(state);
         }
         KeyCode::Backspace => {
-            _ = state.query.text.pop();
-            move_cursor_left(state);
+            if state.query.byte_index() > 0 {
+                _ = state.query.text.remove(state.query.byte_index() - 1);
+                move_cursor_left(state);
+            }
         }
         KeyCode::Left => {
             move_cursor_left(state);

@@ -9,6 +9,6 @@ pub fn handle_event(state: &mut State, key_event: &KeyEvent) {
     if key_event.code == KeyCode::Tab {
         state.active_area = Area::Query;
     } else if key_event.code == KeyCode::BackTab {
-        state.active_area = Area::Result;
+        state.active_area = Area::Results;
     }
 }

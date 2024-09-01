@@ -1,3 +1,4 @@
+mod db;
 mod ui;
 
 use ratatui::{
@@ -11,7 +12,10 @@ use ratatui::{
 use std::io::{self, stdout};
 
 fn main() -> io::Result<()> {
-    let mut state = ui::State::new();
+    let mut state = ui::State::default();
+
+    let mut client: Box<dyn db::Queryable> =
+        Box::new(db::postgres::Client::new("host=localhost user=postgres")?);
 
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
@@ -27,7 +31,9 @@ fn main() -> io::Result<()> {
 
         loop {
             match state.pop_query() {
-                Some(q) => (),
+                Some(q) => {
+                    state.add_results(client.query(q, Vec::new())?);
+                }
                 None => break,
             }
         }
